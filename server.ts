@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { v2 as cloudinary } from 'cloudinary';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { INITIAL_PRODUCTS, INITIAL_COUPONS, BLOGS } from './src/data';
@@ -16,7 +17,8 @@ import { Product, Order, Coupon, BlogPost } from './src/types';
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // File-based DB path
 const DB_FILE = path.join(process.cwd(), 'src', 'db_store.json');
@@ -348,6 +350,62 @@ app.put('/api/admin/profile', authenticateAdmin, (req: Request, res: Response) =
   saveDB();
   const { passwordHash, ...safeAdmin } = db.admin;
   res.json(safeAdmin);
+});
+
+app.post('/api/admin/profile/upload-cloudinary', authenticateAdmin, async (req: Request, res: Response) => {
+  if (!db.admin) return res.status(500).json({ message: 'Internal config missing' });
+  const { image } = req.body;
+
+  if (!image) {
+    return res.status(400).json({ message: 'No image data provided.' });
+  }
+
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (cloudName && apiKey && apiSecret) {
+    try {
+      cloudinary.config({
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret
+      });
+
+      const result = await cloudinary.uploader.upload(image, {
+        folder: 'modex_profile_pictures',
+        resource_type: 'image'
+      });
+
+      db.admin.profilePicture = result.secure_url;
+      saveDB();
+
+      const { passwordHash, ...safeAdmin } = db.admin;
+      return res.json({
+        success: true,
+        message: 'Profile picture uploaded to Cloudinary successfully.',
+        profilePicture: result.secure_url,
+        admin: safeAdmin
+      });
+    } catch (error: any) {
+      console.error('Cloudinary upload error:', error);
+      return res.status(500).json({
+        message: 'Cloudinary upload failed: ' + (error.message || error)
+      });
+    }
+  } else {
+    console.warn('Cloudinary environment keys missing. Using database inline storage as fallback.');
+    db.admin.profilePicture = image;
+    saveDB();
+
+    const { passwordHash, ...safeAdmin } = db.admin;
+    return res.json({
+      success: true,
+      message: 'Uploaded to local cache successfully (Cloudinary keys missing).',
+      profilePicture: image,
+      admin: safeAdmin
+    });
+  }
 });
 
 app.post('/api/admin/profile/password', authenticateAdmin, (req: Request, res: Response) => {
