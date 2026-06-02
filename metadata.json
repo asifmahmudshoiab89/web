@@ -1,0 +1,6 @@
+{
+  "name": "Modex",
+  "description": "Modern Technology. Premium Lifestyle. Premium e-commerce platform with dynamic AI recommendations and secure visual admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
